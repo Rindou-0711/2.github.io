@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>第64回 螢夏祭 - サーバー同期版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script type="module">
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getFirestore, collection, onSnapshot, addDoc, deleteDoc, doc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+        import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                const collections = {
+                    news: collection(db, 'artifacts', appId, 'public', 'data', 'news')
+                };
+
+                onSnapshot(collections.news, (snapshot) => {
+                    const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    window.renderApp('news', data);
+                });
+
+                window.cloudAdd = async (key, data) => await addDoc(collections[key], data);
+                window.cloudDelete = async (key, id) => await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', key, id));
+            }
+        });
+
+        signInAnonymously(auth);
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div class="max-w-4xl mx-auto p-6">
+        <h1 class="text-3xl font-black mb-8 text-emerald-900 border-b pb-4">第64回 螢夏祭 管理システム</h1>
+        
+        <!-- お知らせ投稿フォーム -->
+        <div id="admin-controls" class="bg-emerald-50 p-6 rounded-xl border border-emerald-200 mb-8 hidden">
+            <h2 class="font-bold text-emerald-800 mb-4">新規お知らせ投稿</h2>
+            <input id="news-title" type="text" placeholder="タイトル" class="w-full p-2 mb-2 rounded border">
+            <textarea id="news-content" placeholder="内容" class="w-full p-2 mb-2 rounded border"></textarea>
+            <button onclick="postNews()" class="bg-emerald-600 text-white px-4 py-2 rounded">投稿する</button>
+        </div>
+
+        <div id="content-container" class="space-y-12">
+            <section id="news-section">
+                <h3 class="text-xl font-bold mb-4">最新のお知らせ</h3>
+                <div id="news-list" class="grid gap-4"></div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        window.isAdmin = sessionStorage.getItem('keikasai_admin_logged_in') === 'true';
+        if(window.isAdmin) document.getElementById('admin-controls').classList.remove('hidden');
+
+        async function postNews() {
+            const title = document.getElementById('news-title').value;
+            const content = document.getElementById('news-content').value;
+            if(title && content) {
+                await window.cloudAdd('news', { title, content, createdAt: new Date() });
+                document.getElementById('news-title').value = '';
+                document.getElementById('news-content').value = '';
+            }
+        }
+
+        window.renderApp = (key, data) => {
+            if(key === 'news') {
+                const container = document.getElementById('news-list');
+                container.innerHTML = data.map(n => `
+                    <div class="p-4 bg-white rounded-lg shadow border relative">
+                        <h4 class="font-bold text-lg">${n.title}</h4>
+                        <p class="text-slate-600">${n.content}</p>
+                        ${window.isAdmin ? `<button onclick="window.cloudDelete('news', '${n.id}')" class="absolute top-2 right-2 text-red-500">削除</button>` : ''}
+                    </div>
+                `).join('');
+            }
+        };
+        
+        window.addEventListener('load', () => lucide.createIcons());
+    </script>
+</body>
+</html>
